@@ -9,6 +9,8 @@ import binascii
 import datetime
 import time
 
+logon_data = {}
+
 
 def server_loop(local_host, local_port, remote_host, remote_port):
     # create the server object
@@ -63,26 +65,122 @@ def receive_from(connection):
 
 
 # modify any requests destined for the remote host
-def request_handler(socket_buffer):
-    #Here is the good part
+def request_handler(socket_buffer, client_socket_id):
+    global logon_data, worker_name
+    # Here is the good part
     
-    #If it is an Auth packet
+    # If it is an Auth packet
     if 'submitLogin' in socket_buffer:
         json_data = json.loads(socket_buffer, object_pairs_hook=OrderedDict)
         print('[+] Auth in progress with address: ' + json_data['params'][0])
-        #If the auth contain an other address than our
+
+        # capture full worker name
+        requester_worker_name = json_data['params'][0]
+
+        if "/" not in requester_worker_name or "." not in requester_worker_name:
+            print('[!] ADDRESS does not look like a full address/worker combo - ' + str(datetime.datetime.now()))
+            print('[!] :: ' + requester_worker_name)
+
+        # Try load the worker json file (where worker names and client IP's that used them are stored),
+        # else write a new file, when workers first connect to proxy all initial logins should be captured
+        found = False
+        if worker_name in json_data['params'][0]:
+            found = False
+            # logon_data = {}
+            # logon_data['logons'] = []
+
+            # if not already stored
+            for json_dict in logon_data['logons']:
+                key_ip = json_dict['src_ip']
+                if key_ip == str(client_socket_id):
+                    found = True
+                    break
+
+            if found is False:
+                logon_data['logons'].append({
+                    'src_ip': str(client_socket_id),
+                    'requester_logon_name': requester_worker_name,
+                })
+
+                print ('[+] Stored worker name for client (' + str(client_socket_id) + ') : ' + requester_worker_name)
+                print ('[+] Stored logons: ' + str(logon_data['logons']))
+        else:
+            found_client_socket_id = ''
+            for json_dict in logon_data['logons']:
+                key_ip = json_dict['src_ip']
+                key_address = json_dict['requester_logon_name']
+
+                # print ("JSON DICT_: " + json.dumps(json_dict))
+                # print("key: {0} | value: {1}".format(json_dict['src_ip'], json_dict['requester_logon_name']))
+
+                # if the src_address matches a entry, then we found the worker name for that client
+                # sub in worker name for the requesting client
+                if key_ip == str(client_socket_id):
+                    found_client_socket_id = key_ip
+                    worker_name = key_address
+                    found = True
+                    break
+
+            if found is True:
+                print ('[+] Found previously used worker for client (' + found_client_socket_id + ') : ' + worker_name)
+
+        # try:
+        #     with open('source_logons.json') as worker_json_file:
+        #         loaded_json_data = json.load(worker_json_file)
+        #
+        #         for json_dict in loaded_json_data['logons']:
+        #             key_ip = json_dict['src_ip']
+        #             key_address = json_dict['requester_logon_name']
+        #
+        #             # print ("JSON DICT_: " + json.dumps(json_dict))
+        #             # print("key: {0} | value: {1}".format(json_dict['src_ip'], json_dict['requester_logon_name']))
+        #
+        #             # if the src_address matches a entry, then we found the worker name for that client
+        #             # sub in worker name for the requesting client
+        #             if key_ip == src_addr:
+        #                 found_ip = key_ip
+        #                 worker_name = key_address
+        #                 found = True
+        #
+        #             if found:
+        #                 break
+        #     worker_json_file.close()
+        #
+        #     if found:
+        #         print ('[+] Found previously used worker for client (' + found_ip + ') : ' + worker_name)
+        # except:
+        #     # print('[-] UNABLE TO LOAD LOGON FILE. WRITING NEW FILE.')
+        #     # save worker names for reuse
+        #     # but only store worker names which contain part of our worker_name above
+        #     # so we don't accidentally store the DevFee worker against a client
+        #     if worker_name in json_data['params'][0]:
+        #         logon_data = {}
+        #         logon_data['logons'] = []
+        #         logon_data['logons'].append({
+        #             'src_ip': src_addr,
+        #             'requester_logon_name': requester_worker_name,
+        #         })
+        #         # write to file
+        #         with open('source_logons.json', 'w') as worker_json_file:
+        #             json.dump(logon_data, worker_json_file)
+        #             print ('[+] Stored worker name for client (' + src_addr + ') : ' + requester_worker_name)
+        #         worker_json_file.close()
+
+        # If the auth contain an other address than our
         if worker_name not in json_data['params'][0]:
-             print('[*] DevFee Detected - Replacing Address - ' + str(datetime.datetime.now()))
-             print('[*] OLD: ' + json_data['params'][0])
-             #We replace the address
-             json_data['params'][0] = worker_name + '/rekt'
-             print('[*] NEW: ' + json_data['params'][0])
+            print('[*] DevFee Detected - Replacing Address - ' + str(datetime.datetime.now()))
+            print('[*] OLD: ' + json_data['params'][0])
+            # We replace the address, sub in the worker name for the connected client if found
+            if found is True:
+                json_data['params'][0] = worker_name
+            else:
+                json_data['params'][0] = worker_name + '/rekt'
+            print('[*] NEW: ' + json_data['params'][0])
 
         socket_buffer = json.dumps(json_data) + '\n'
         
-    #Packet is forged, ready to send.
+    # Packet is forged, ready to send.
     return socket_buffer
-
 
 
 # modify any responses destined for the local host
@@ -93,7 +191,9 @@ def response_handler(buffer):
 def proxy_handler(client_socket, remote_host, remote_port):
     # We prepare the connection
     remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    
+
+    src_addr = client_socket.getpeername()
+
     # We will try to connect to the remote pool
     for attempt_pool in range(3):
         try:
@@ -105,7 +205,7 @@ def proxy_handler(client_socket, remote_host, remote_port):
             # Connection OK
             break
     else:
-        print "[!] Impossible initiate connection to the pool. Claymore should reconnect. (Check your internet connection) "+ str(datetime.datetime.now())
+        print "[!] Impossible initiate connection to the pool. Claymore should reconnect. (Check your internet connection) " + str(datetime.datetime.now())
         
         #Closing connection
         client_socket.shutdown(socket.SHUT_RDWR)
@@ -125,7 +225,7 @@ def proxy_handler(client_socket, remote_host, remote_port):
         if len(local_buffer):
 
             # send it to our request handler
-            local_buffer = request_handler(local_buffer)
+            local_buffer = request_handler(local_buffer, src_addr)
             
             #print local_buffer
             
@@ -177,6 +277,10 @@ def main():
         print "Usage: ./proxy.py [localhost] [localport] [remotehost] [remoteport] [ETH Wallet]"
         print "Example: ./proxy.py 127.0.0.1 9000 eth.realpool.org 9000 0x..."
         sys.exit(0)
+
+    # prime logon/worker name pool
+    global logon_data
+    logon_data['logons'] = []
 
     # set up listening parameters
     local_host = sys.argv[1]
