@@ -41,7 +41,6 @@ def server_loop(local_host, local_port, remote_host, remote_port):
 
 
 def receive_from(connection):
-
     buffer = ""
 
     # We set a 2 second time out depending on your
@@ -64,25 +63,24 @@ def receive_from(connection):
 
 # modify any requests destined for the remote host
 def request_handler(socket_buffer):
-    #Here is the good part
+    # Here is the good part
 
-    #If it is an Auth packet
+    # If it is an Auth packet
     if ('submitLogin' in socket_buffer) or ('eth_login' in socket_buffer):
         json_data = json.loads(socket_buffer, object_pairs_hook=OrderedDict)
         print('[+] Auth in progress with address: ' + json_data['params'][0])
-        #If the auth contain an other address than our
+        # If the auth contain an other address than our
         if wallet not in json_data['params'][0]:
-             print('[*] DevFee Detected - Replacing Address - ' + str(datetime.datetime.now()))
-             print('[*] OLD: ' + json_data['params'][0])
-             #We replace the address
-             json_data['params'][0] = wallet + worker_name
-             print('[*] NEW: ' + json_data['params'][0])
+            print('[*] DevFee Detected - Replacing Address - ' + str(datetime.datetime.now()))
+            print('[*] OLD: ' + json_data['params'][0])
+            # We replace the address
+            json_data['params'][0] = wallet + worker_name
+            print('[*] NEW: ' + json_data['params'][0])
 
         socket_buffer = json.dumps(json_data) + '\n'
-        
-    #Packet is forged, ready to send.
-    return socket_buffer
 
+    # Packet is forged, ready to send.
+    return socket_buffer
 
 
 # modify any responses destined for the local host
@@ -93,7 +91,7 @@ def response_handler(buffer):
 def proxy_handler(client_socket, remote_host, remote_port):
     # We prepare the connection
     remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    
+
     # We will try to connect to the remote pool
     for attempt_pool in range(3):
         try:
@@ -105,15 +103,15 @@ def proxy_handler(client_socket, remote_host, remote_port):
             # Connection OK
             break
     else:
-        print "[!] Impossible initiate connection to the pool. Claymore should reconnect. (Check your internet connection) "+ str(datetime.datetime.now())
-        
-        #Closing connection
+        print "[!] Impossible initiate connection to the pool. Claymore should reconnect. (Check your internet connection) " \
+              + str(datetime.datetime.now())
+
+        # Closing connection
         client_socket.shutdown(socket.SHUT_RDWR)
         client_socket.close()
-        
-        #Exiting Thread
+
+        # Exiting Thread
         sys.exit()
-        
 
     # now let's loop and reading from local, send to remote, send to local
     # rinse wash repeat
@@ -121,27 +119,28 @@ def proxy_handler(client_socket, remote_host, remote_port):
 
         # read from local host
         local_buffer = receive_from(client_socket)
-        
+
         if len(local_buffer):
 
             # send it to our request handler
             local_buffer = request_handler(local_buffer)
-            
-            #print local_buffer
-            
+
+            # print local_buffer
+
             # Try to send off the data to the remote pool
             try:
                 remote_socket.send(local_buffer)
             except:
                 print "[!] Sending packets to pool failed."
                 time.sleep(0.02)
-                print "[!] Connection with pool lost. Claymore should reconnect. (May be temporary) "+ str(datetime.datetime.now())
-                #Closing connection
+                print "[!] Connection with pool lost. Claymore should reconnect. (May be temporary) " \
+                      + str(datetime.datetime.now())
+                # Closing connection
                 client_socket.shutdown(socket.SHUT_RDWR)
                 client_socket.close()
-                #Exiting loop
+                # Exiting loop
                 break
-                
+
             # Adding delay to avoid too much CPU Usage
             time.sleep(0.001)
 
@@ -149,25 +148,25 @@ def proxy_handler(client_socket, remote_host, remote_port):
         remote_buffer = receive_from(remote_socket)
 
         if len(remote_buffer):
-            
+
             # send to our response handler
             remote_buffer = response_handler(remote_buffer)
-            
-            #print local_buffer
-            
+
+            # print local_buffer
+
             # Try to send the response to the local socket
             try:
-                 client_socket.send(remote_buffer)
+                client_socket.send(remote_buffer)
             except:
-                 print('[-] Auth Disconnected - Ending Devfee or stopping mining - ' + str(datetime.datetime.now()))
-                 client_socket.close()
-                 break
+                print('[-] Auth Disconnected - Ending Devfee or stopping mining - ' + str(datetime.datetime.now()))
+                client_socket.close()
+                break
 
             # Adding delay to avoid too much CPU Usage
             time.sleep(0.001)
         time.sleep(0.001)
-        
-    #Clean exit if we break the loop
+
+    # Clean exit if we break the loop
     sys.exit()
 
 
@@ -187,24 +186,24 @@ def main():
     remote_port = int(sys.argv[4])
 
     # Set the wallet
-    global wallet 
+    global wallet
     wallet = sys.argv[5]
-    
+
     global worker_name
     worker_name = 'rekt'
-    
-    #Uncomment if you meet issue with pool or worker name - This will disable the worker name
-    #worker_name = ''
-    
-    pool_slash = ['nanopool.org','dwarfpool.com']
-    pool_dot = ['ethpool.org','ethermine.org','alpereum.ch']
+
+    # Uncomment if you meet issue with pool or worker name - This will disable the worker name
+    # worker_name = ''
+
+    pool_slash = ['nanopool.org', 'dwarfpool.com']
+    pool_dot = ['ethpool.org', 'ethermine.org', 'alpereum.ch']
     if worker_name:
         if any(s in remote_host for s in pool_slash):
             worker_name = '/' + worker_name
         elif any(d in remote_host for d in pool_dot):
             worker_name = '.' + worker_name
         else:
-            #No worker name for compatbility reason
+            # No worker name for compatbility reason
             print "Unknown pool - Worker name is empty"
             worker_name = ''
 
