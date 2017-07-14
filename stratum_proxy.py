@@ -62,6 +62,7 @@ def receive_from(connection):
 
 
 # modify any requests destined for the remote host
+<<<<<<< HEAD
 def request_handler(socket_buffer, client_socket_id):
     global logon_data, worker_name, uses_dot_rigname, uses_slash_rigname, identify_dev_fee
     worker_found = False
@@ -165,6 +166,22 @@ def request_handler(socket_buffer, client_socket_id):
                 # no rigname so just replace the wallet
                 json_data['params'][0] = worker_name
             print('[*] NEW: ' + json_data['params'][0])
+=======
+def request_handler(socket_buffer):
+    #Here is the good part
+
+    #If it is an Auth packet
+    if ('submitLogin' in socket_buffer) or ('eth_login' in socket_buffer):
+        json_data = json.loads(socket_buffer, object_pairs_hook=OrderedDict)
+        print('[+] Auth in progress with address: ' + json_data['params'][0])
+        #If the auth contain an other address than our
+        if wallet not in json_data['params'][0]:
+             print('[*] DevFee Detected - Replacing Address - ' + str(datetime.datetime.now()))
+             print('[*] OLD: ' + json_data['params'][0])
+             #We replace the address
+             json_data['params'][0] = wallet + worker_name
+             print('[*] NEW: ' + json_data['params'][0])
+>>>>>>> refs/remotes/JuicyPasta/master
 
         socket_buffer = json.dumps(json_data) + '\n'
 
@@ -281,13 +298,39 @@ def main():
     remote_port = int(sys.argv[4])
 
     # Set the wallet
+<<<<<<< HEAD
     global worker_name
     worker_name = sys.argv[5]
+=======
+    global wallet 
+    wallet = sys.argv[5]
+    
+    global worker_name
+    worker_name = 'rekt'
+    
+    #Uncomment if you meet issue with pool or worker name - This will disable the worker name
+    #worker_name = ''
+    
+    pool_slash = ['nanopool.org','dwarfpool.com']
+    pool_dot = ['ethpool.org','ethermine.org','alpereum.ch']
+    if worker_name:
+        if any(s in remote_host for s in pool_slash):
+            worker_name = '/' + worker_name
+        elif any(d in remote_host for d in pool_dot):
+            worker_name = '.' + worker_name
+        else:
+            #No worker name for compatbility reason
+            print "Unknown pool - Worker name is empty"
+            worker_name = ''
+
+    print "Wallet set: " + wallet + worker_name
+>>>>>>> refs/remotes/JuicyPasta/master
 
     # now spin up our listening socket
     server_loop(local_host, local_port, remote_host, remote_port)
 
 
+<<<<<<< HEAD
 # True or False
 # Worker name uses dot '.' eg. wallet.rigname
 uses_dot_rigname = True
@@ -300,5 +343,7 @@ identify_dev_fee = False
 worker_name = 0
 logon_data = {}
 
+=======
+>>>>>>> refs/remotes/JuicyPasta/master
 if __name__ == "__main__":
     main()
