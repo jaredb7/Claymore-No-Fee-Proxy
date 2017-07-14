@@ -45,7 +45,7 @@ def receive_from(connection):
 
     # We set a 2 second time out depending on your
     # target this may need to be adjusted
-    connection.settimeout(0)
+    connection.settimeout(2)
 
     try:
         # keep reading into the buffer until there's no more data
@@ -91,6 +91,7 @@ def response_handler(buffer):
 def proxy_handler(client_socket, remote_host, remote_port):
     # We prepare the connection
     remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    remote_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)  # Enable keepalive packets
 
     # We will try to connect to the remote pool
     for attempt_pool in range(3):
