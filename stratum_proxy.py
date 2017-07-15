@@ -45,7 +45,7 @@ def receive_from(connection):
 
     # We set a 2 second time out depending on your
     # target this may need to be adjusted
-    connection.settimeout(2)
+    connection.settimeout(0)
 
     try:
         # keep reading into the buffer until there's no more data
@@ -196,8 +196,8 @@ def main():
     # Uncomment if you meet issue with pool or worker name - This will disable the worker name
     # worker_name = ''
 
-    pool_slash = ['nanopool.org', 'dwarfpool.com']
-    pool_dot = ['ethpool.org', 'ethermine.org', 'alpereum.ch']
+    pool_slash = ['dwarfpool.com']
+    pool_dot = ['nanopool.org', 'ethpool.org', 'ethermine.org', 'alpereum.ch']
     if worker_name:
         if any(s in remote_host for s in pool_slash):
             worker_name = '/' + worker_name
