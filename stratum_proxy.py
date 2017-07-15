@@ -62,27 +62,26 @@ def receive_from(connection):
 
 
 # modify any requests destined for the remote host
-<<<<<<< HEAD
 def request_handler(socket_buffer, client_socket_id):
-    global logon_data, worker_name, uses_dot_rigname, uses_slash_rigname, identify_dev_fee
+    # global logon_data, worker_name, uses_dot_rigname, uses_slash_rigname, identify_dev_fee
     worker_found = False
-
     rig_name = ''
     rig_email = ''
+
     # Here is the good part
 
     # If it is an Auth packet
-    if 'submitLogin' in socket_buffer:
+    if ('submitLogin' in socket_buffer) or ('eth_login' in socket_buffer):
         json_data = json.loads(socket_buffer, object_pairs_hook=OrderedDict)
         print('[+] Auth in progress with address: ' + json_data['params'][0])
 
-        # capture full worker name
+        # capture full worker name (contains wallet(.)(/) worker/rig name
         requester_worker_name = json_data['params'][0]
 
         # try to find our worker/wallet in the request worker_name, if so its one of our rigs, log some info about it
         # if there is no match, it's probably the DevFee
         # when workers first connect to proxy all initial logins should be captured
-        if worker_name in json_data['params'][0]:
+        if wallet in json_data['params'][0]:
             worker_found = False
 
             # check if if not already stored
@@ -92,9 +91,10 @@ def request_handler(socket_buffer, client_socket_id):
                     worker_found = True
                     break
 
+            # If worker not found, store it
             if worker_found is False:
                 # check the worker name & dissect
-                if "." in requester_worker_name and uses_dot_rigname:
+                if "." in requester_worker_name and uses_dot_workername:
                     # worker name has a dot separating rig name from wallet,
                     # there could also be a email with denoted by slash
                     dot_index = requester_worker_name.index('.')
@@ -106,27 +106,26 @@ def request_handler(socket_buffer, client_socket_id):
                         # capture email - unused but might as well
                         rig_email = requester_worker_name[slash_index + 1:]
                     else:
+                        # if no slash, then everything after dot is the worker/rigname
                         rig_name = requester_worker_name[dot_index + 1:]
-                elif "/" in requester_worker_name and uses_slash_rigname:
+                elif "/" in requester_worker_name and uses_slash_workername:
                     # worker name has a slash separating rig name, or could be a email too (not for checked yet)
                     slash_index = requester_worker_name.index('/')
                     rig_name = requester_worker_name[slash_index + 1:]
-                elif ("/" not in requester_worker_name and uses_slash_rigname) or (
-                        "." not in requester_worker_name and uses_dot_rigname):
-                    if identify_dev_fee is True:
-                        rig_name = 'DevFee'
-
-                    print('[!] Address does not look like a full address/worker combo (DevFee?) - '
-                          + str(datetime.datetime.now()))
+                elif ("/" in requester_worker_name and not uses_slash_workername) or (
+                                "." in requester_worker_name and not uses_dot_workername):
+                    print('[!] Address might contain a worker/rig name but uses_dot_workername(' + str(
+                        uses_dot_workername) + ') & uses_slash_workername(' + str(
+                        uses_slash_workername) + ') ? ' + str(datetime.datetime.now()))
                     print('[!] :: ' + requester_worker_name)
 
                 # capture
                 logon_data['logons'].append({
                     'src_ip': client_socket_id[0],
                     'src_port': client_socket_id[1],
-                    'rig_name': rig_name,
-                    'rig_email': rig_email,
-                    'requester_logon_name': requester_worker_name,
+                    'rig_name': str(rig_name),
+                    'rig_email': str(rig_email),
+                    'requester_logon_name': str(requester_worker_name),
                 })
 
                 print ('[+] Stored worker name for client (' + str(client_socket_id[0]) + ':' + str(
@@ -137,6 +136,7 @@ def request_handler(socket_buffer, client_socket_id):
             for json_dict in logon_data['logons']:
                 key_ip = json_dict['src_ip']
                 key_rigname = json_dict['rig_name']
+                rig_email = json_dict['rig_email']
 
                 # print ("JSON DICT_: " + json.dumps(json_dict))
                 # print("key: {0} | value: {1}".format(json_dict['src_ip'], json_dict['requester_logon_name']))
@@ -146,6 +146,8 @@ def request_handler(socket_buffer, client_socket_id):
                 if key_ip == client_socket_id[0]:
                     # found_client_socket_id = key_ip
                     rig_name = key_rigname
+                    if len(rig_email) != 0:
+                        rig_name = rig_name + "/" + rig_email
                     worker_found = True
                     break
 
@@ -153,35 +155,25 @@ def request_handler(socket_buffer, client_socket_id):
                 print ('[+] Found previously used worker for client (' + str(client_socket_id[0])
                        + ':' + str(client_socket_id[1]) + ') : %s ' % rig_name)
 
+            # Ident. the worker fee if we're told to do so, change the rig/worker name
+            if identify_dev_fee is True:
+                old_rig_name = rig_name
+                rig_name = dev_fee_worker
+                print ('[+] Identify DevFee is set :: Worker Change (' + old_rig_name + '==>' + rig_name + ')')
+
         # If the auth contain an other address than ours
-        if worker_name not in json_data['params'][0]:
+        if wallet not in json_data['params'][0]:
             print('[*] DevFee Detected - Replacing Address - ' + str(datetime.datetime.now()))
             print('[*] OLD: ' + json_data['params'][0])
             # We replace the address, sub in the worker name for the connected client if found
-            if len(rig_name) > 0 and uses_dot_rigname:
-                json_data['params'][0] = worker_name + '.' + rig_name
-            elif len(rig_name) > 0 and uses_slash_rigname:
-                json_data['params'][0] = worker_name + '/' + rig_name
+            if len(rig_name) > 0 and uses_dot_workername:
+                json_data['params'][0] = wallet + '.' + rig_name
+            elif len(rig_name) > 0 and uses_slash_workername:
+                json_data['params'][0] = wallet + '/' + rig_name
             else:
-                # no rigname so just replace the wallet
-                json_data['params'][0] = worker_name
+                # no worker_name so just replace the wallet
+                json_data['params'][0] = wallet
             print('[*] NEW: ' + json_data['params'][0])
-=======
-def request_handler(socket_buffer):
-    #Here is the good part
-
-    #If it is an Auth packet
-    if ('submitLogin' in socket_buffer) or ('eth_login' in socket_buffer):
-        json_data = json.loads(socket_buffer, object_pairs_hook=OrderedDict)
-        print('[+] Auth in progress with address: ' + json_data['params'][0])
-        #If the auth contain an other address than our
-        if wallet not in json_data['params'][0]:
-             print('[*] DevFee Detected - Replacing Address - ' + str(datetime.datetime.now()))
-             print('[*] OLD: ' + json_data['params'][0])
-             #We replace the address
-             json_data['params'][0] = wallet + worker_name
-             print('[*] NEW: ' + json_data['params'][0])
->>>>>>> refs/remotes/JuicyPasta/master
 
         socket_buffer = json.dumps(json_data) + '\n'
 
@@ -197,8 +189,10 @@ def response_handler(buffer):
 def proxy_handler(client_socket, remote_host, remote_port):
     # We prepare the connection
     remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    remote_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)  # Enable keepalive packets
 
-    src_addr = client_socket.getpeername()
+    # Get Client Address and Port
+    client_socket_info = client_socket.getpeername()
 
     # We will try to connect to the remote pool
     for attempt_pool in range(3):
@@ -231,7 +225,7 @@ def proxy_handler(client_socket, remote_host, remote_port):
         if len(local_buffer):
 
             # send it to our request handler
-            local_buffer = request_handler(local_buffer, src_addr)
+            local_buffer = request_handler(local_buffer, client_socket_info)
 
             # print local_buffer
 
@@ -285,10 +279,6 @@ def main():
         print "Example: ./proxy.py 127.0.0.1 9000 eth.realpool.org 9000 0x..."
         sys.exit(0)
 
-    # prime logon/worker name pool
-    global logon_data
-    logon_data['logons'] = []
-
     # set up listening parameters
     local_host = sys.argv[1]
     local_port = int(sys.argv[2])
@@ -297,53 +287,51 @@ def main():
     remote_host = sys.argv[3]
     remote_port = int(sys.argv[4])
 
+    # prime logon/worker name pool
+    global logon_data
+    logon_data = {}
+    logon_data['logons'] = []
+
     # Set the wallet
-<<<<<<< HEAD
-    global worker_name
-    worker_name = sys.argv[5]
-=======
-    global wallet 
+    global wallet
     wallet = sys.argv[5]
     
     global worker_name
     worker_name = 'rekt'
-    
-    #Uncomment if you meet issue with pool or worker name - This will disable the worker name
-    #worker_name = ''
-    
-    pool_slash = ['nanopool.org','dwarfpool.com']
-    pool_dot = ['ethpool.org','ethermine.org','alpereum.ch']
+
+    # Uncomment if you meet issue with pool or worker name - This will disable the worker name
+    # worker_name = ''
+
+    pool_slash = ['dwarfpool.com']
+    pool_dot = ['nanopool.org', 'ethpool.org', 'ethermine.org', 'alpereum.ch']
     if worker_name:
         if any(s in remote_host for s in pool_slash):
+            global uses_slash_workername
+            uses_slash_workername = True
             worker_name = '/' + worker_name
         elif any(d in remote_host for d in pool_dot):
+            global uses_dot_workername
+            uses_dot_workername = True
             worker_name = '.' + worker_name
         else:
-            #No worker name for compatbility reason
+            # No worker name for compatbility reason
             print "Unknown pool - Worker name is empty"
             worker_name = ''
 
     print "Wallet set: " + wallet + worker_name
->>>>>>> refs/remotes/JuicyPasta/master
 
     # now spin up our listening socket
     server_loop(local_host, local_port, remote_host, remote_port)
 
 
-<<<<<<< HEAD
 # True or False
 # Worker name uses dot '.' eg. wallet.rigname
-uses_dot_rigname = True
+uses_dot_workername = False
 # Worker name uses slash '/' eg. wallet/rigname
-uses_slash_rigname = False
+uses_slash_workername = False
 # Identify DevFee - Worker/Rig Name will be namne 'DevFee'
-identify_dev_fee = False
+identify_dev_fee = True
+dev_fee_worker = "DevFee"
 
-# Worker Name is your wallet, supplied in as a param
-worker_name = 0
-logon_data = {}
-
-=======
->>>>>>> refs/remotes/JuicyPasta/master
 if __name__ == "__main__":
     main()
