@@ -63,7 +63,7 @@ def receive_from(connection):
 
 # modify any requests destined for the remote host
 def request_handler(socket_buffer, client_socket_id):
-    # global logon_data, worker_name, uses_dot_rigname, uses_slash_rigname, identify_dev_fee
+    global logon_data
     worker_found = False
     rig_name = ''
     rig_email = ''
@@ -146,6 +146,7 @@ def request_handler(socket_buffer, client_socket_id):
                 if key_ip == client_socket_id[0]:
                     # found_client_socket_id = key_ip
                     rig_name = key_rigname
+                    # tack on email if found last round
                     if len(rig_email) != 0:
                         rig_name = rig_name + "/" + rig_email
                     worker_found = True
@@ -309,10 +310,12 @@ def main():
             global uses_slash_workername
             uses_slash_workername = True
             worker_name = '/' + worker_name
+            print remote_host + " uses wallet/worker format"
         elif any(d in remote_host for d in pool_dot):
             global uses_dot_workername
             uses_dot_workername = True
             worker_name = '.' + worker_name
+            print remote_host + " uses wallet.worker format"
         else:
             # No worker name for compatbility reason
             print "Unknown pool - Worker name is empty"
